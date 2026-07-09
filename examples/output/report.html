@@ -1,0 +1,1349 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>A/B Experiment Batch Report</title>
+<style>
+  :root {
+    --ship:#137333; --ship-bg:#e6f4ea;
+    --noship:#a50e0e; --noship-bg:#fce8e6;
+    --more:#b06000; --more-bg:#fef7e0;
+    --inconc:#5f6368; --inconc-bg:#f1f3f4;
+    --border:#dadce0; --ink:#202124; --muted:#5f6368;
+  }
+  * { box-sizing:border-box; }
+  body { font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Helvetica,Arial,sans-serif;
+         color:var(--ink); margin:0; padding:32px; background:#fff; }
+  h1 { font-size:22px; margin:0 0 4px; }
+  .sub { color:var(--muted); font-size:13px; margin-bottom:20px; }
+  .cards { display:flex; gap:12px; flex-wrap:wrap; margin-bottom:20px; }
+  .card { border:1px solid var(--border); border-radius:8px; padding:12px 16px; min-width:120px; }
+  .card .n { font-size:26px; font-weight:700; }
+  .card .l { font-size:12px; color:var(--muted); text-transform:uppercase; letter-spacing:.4px; }
+  table { border-collapse:collapse; width:100%; font-size:13px; }
+  th, td { text-align:left; padding:8px 10px; border-bottom:1px solid var(--border); white-space:nowrap; }
+  th { background:#f8f9fa; cursor:pointer; user-select:none; position:sticky; top:0; }
+  th:hover { background:#f1f3f4; }
+  th::after { content:" \2195"; color:#bbb; font-size:11px; }
+  tr.main:hover { background:#fafafa; }
+  tr.main { cursor:pointer; }
+  td.num { text-align:right; font-variant-numeric:tabular-nums; }
+  .pos { color:var(--ship); } .neg { color:var(--noship); }
+  .badge { display:inline-block; padding:2px 10px; border-radius:12px; font-size:12px; font-weight:600; }
+  .badge.ship { color:var(--ship); background:var(--ship-bg); }
+  .badge.no_ship { color:var(--noship); background:var(--noship-bg); }
+  .badge.needs_more_data { color:var(--more); background:var(--more-bg); }
+  .badge.inconclusive { color:var(--inconc); background:var(--inconc-bg); }
+  .sigdot { display:inline-block; width:9px; height:9px; border-radius:50%; margin-right:6px; }
+  .sig-yes { background:var(--ship); } .sig-no { background:#c7c7c7; }
+  tr.detail td { background:#fbfcfd; border-bottom:2px solid var(--border); padding:0; }
+  tr.detail .box { padding:14px 18px; display:none; }
+  tr.detail.open .box { display:block; }
+  .kv { display:grid; grid-template-columns:repeat(auto-fill,minmax(220px,1fr)); gap:8px 24px; margin-top:8px; }
+  .kv div { font-size:12.5px; }
+  .kv b { color:var(--muted); font-weight:600; }
+  .reason { margin:4px 0 0; font-size:13px; }
+  .flags { margin-top:8px; }
+  .flag { display:inline-block; font-size:11px; background:#fff4e5; color:#8a4b00;
+          border:1px solid #ffd9a8; border-radius:4px; padding:1px 7px; margin:2px 4px 0 0; }
+  .controls { margin:0 0 12px; font-size:13px; }
+  .controls input, .controls select { padding:5px 8px; border:1px solid var(--border); border-radius:6px; font-size:13px; }
+  footer { margin-top:26px; color:var(--muted); font-size:12px; border-top:1px solid var(--border); padding-top:12px; }
+  code { background:#f1f3f4; padding:1px 5px; border-radius:4px; }
+  @media print {
+    body { padding:0; }
+    th { position:static; }
+    tr.detail .box { display:block !important; }
+    .controls, th::after { display:none; }
+    tr, td, th { page-break-inside:avoid; }
+  }
+</style>
+</head>
+<body>
+  <h1>A/B Experiment Batch Report</h1>
+  <div class="sub">
+    30 experiments &middot; source <code>experiments.csv</code>
+    &middot; generated 2026-07-09 08:37 UTC
+    &middot; &alpha;=0.05, BH-FDR=0.05
+  </div>
+
+  <div class="cards">
+    <div class="card"><div class="n" style="color:var(--ship)">14</div><div class="l">Ship</div></div>
+    <div class="card"><div class="n" style="color:var(--noship)">4</div><div class="l">No-ship</div></div>
+    <div class="card"><div class="n" style="color:var(--more)">3</div><div class="l">More data</div></div>
+    <div class="card"><div class="n" style="color:var(--inconc)">9</div><div class="l">Inconclusive</div></div>
+  </div>
+
+  <div class="controls">
+    Filter:
+    <input id="q" type="text" placeholder="search id / name..." oninput="applyFilter()">
+    <select id="vf" onchange="applyFilter()">
+      <option value="">all verdicts</option>
+      <option value="ship">ship</option>
+      <option value="no_ship">no_ship</option>
+      <option value="needs_more_data">needs_more_data</option>
+      <option value="inconclusive">inconclusive</option>
+    </select>
+  </div>
+
+  <table id="tbl">
+    <thead>
+      <tr>
+        <th data-t="s">Experiment</th>
+        <th data-t="s">Metric</th>
+        <th data-t="n">Control</th>
+        <th data-t="n">Treatment</th>
+        <th data-t="n">Uplift</th>
+        <th data-t="n">p (raw)</th>
+        <th data-t="n">p (BH)</th>
+        <th data-t="s">Sig.</th>
+        <th data-t="s">Verdict</th>
+      </tr>
+    </thead>
+    <tbody>
+    
+      <tr class="main" data-verdict="ship" data-search="exp-003 revenue per user - new plan" onclick="toggle(this)">
+        <td><b>EXP-003</b><br><span style="color:var(--muted)">Revenue per user - new plan</span></td>
+        <td>mean</td>
+        <td class="num" data-v="51.998286">
+          52
+        </td>
+        <td class="num" data-v="55.111048">
+          55.11
+        </td>
+        <td class="num pos" data-v="0.05986278086166141">5.99%</td>
+        <td class="num" data-v="0.0">0</td>
+        <td class="num" data-v="0.0">0</td>
+        <td data-v="1">
+          <span class="sigdot sig-yes"></span>yes
+        </td>
+        <td data-v="ship"><span class="badge ship">ship</span></td>
+      </tr>
+      <tr class="detail">
+        <td colspan="9"><div class="box">
+          <p class="reason"><b>Why:</b> Significant after BH correction (p_adj=0), +5.99% in the desired direction, above the 0.5% practical floor.</p>
+          <div class="kv">
+            <div><b>Test:</b> Welch&#39;s t-test</div>
+            <div><b>Control n:</b> 30,000</div>
+            <div><b>Treatment n:</b> 30,000</div>
+            <div><b>Abs. difference:</b> 3.113</div>
+            <div><b>Rel. uplift:</b> 5.99%</div>
+            <div><b>95% CI (abs diff):</b> [2.969, 3.257]</div>
+            <div><b>Test statistic:</b> 42.39</div>
+            <div><b>p-value (raw):</b> 0</div>
+            <div><b>p-value (BH-adj):</b> 0</div>
+            <div><b>MDE (relative, 80% power):</b> 0.40%</div>
+            <div><b>Desired direction:</b> increase</div>
+            <div><b>Interim looks (peeks):</b> 0</div>
+          </div>
+          
+        </div></td>
+      </tr>
+    
+      <tr class="main" data-verdict="ship" data-search="exp-028 reduce checkout steps (time)" onclick="toggle(this)">
+        <td><b>EXP-028</b><br><span style="color:var(--muted)">Reduce checkout steps (time)</span></td>
+        <td>mean</td>
+        <td class="num" data-v="95.063802">
+          95.06
+        </td>
+        <td class="num" data-v="88.3771">
+          88.38
+        </td>
+        <td class="num neg" data-v="-0.07033909710448986">-7.03%</td>
+        <td class="num" data-v="0.0">0</td>
+        <td class="num" data-v="0.0">0</td>
+        <td data-v="1">
+          <span class="sigdot sig-yes"></span>yes
+        </td>
+        <td data-v="ship"><span class="badge ship">ship</span></td>
+      </tr>
+      <tr class="detail">
+        <td colspan="9"><div class="box">
+          <p class="reason"><b>Why:</b> Significant after BH correction (p_adj=0), -7.03% in the desired direction, above the 0.5% practical floor.</p>
+          <div class="kv">
+            <div><b>Test:</b> Welch&#39;s t-test</div>
+            <div><b>Control n:</b> 30,000</div>
+            <div><b>Treatment n:</b> 30,000</div>
+            <div><b>Abs. difference:</b> -6.687</div>
+            <div><b>Rel. uplift:</b> -7.03%</div>
+            <div><b>95% CI (abs diff):</b> [-7.007, -6.367]</div>
+            <div><b>Test statistic:</b> -40.95</div>
+            <div><b>p-value (raw):</b> 0</div>
+            <div><b>p-value (BH-adj):</b> 0</div>
+            <div><b>MDE (relative, 80% power):</b> 0.48%</div>
+            <div><b>Desired direction:</b> decrease</div>
+            <div><b>Interim looks (peeks):</b> 0</div>
+          </div>
+          
+        </div></td>
+      </tr>
+    
+      <tr class="main" data-verdict="ship" data-search="exp-005 search ranking v2" onclick="toggle(this)">
+        <td><b>EXP-005</b><br><span style="color:var(--muted)">Search ranking v2</span></td>
+        <td>mean</td>
+        <td class="num" data-v="3.098738">
+          3.099
+        </td>
+        <td class="num" data-v="3.384654">
+          3.385
+        </td>
+        <td class="num pos" data-v="0.09226852996284289">9.23%</td>
+        <td class="num" data-v="5.36932777009875e-206">5.369e-206</td>
+        <td class="num" data-v="4.026995827574062e-205">4.027e-205</td>
+        <td data-v="1">
+          <span class="sigdot sig-yes"></span>yes
+        </td>
+        <td data-v="ship"><span class="badge ship">ship</span></td>
+      </tr>
+      <tr class="detail">
+        <td colspan="9"><div class="box">
+          <p class="reason"><b>Why:</b> Significant after BH correction (p_adj=4.027e-205), +9.23% in the desired direction, above the 0.5% practical floor.</p>
+          <div class="kv">
+            <div><b>Test:</b> Welch&#39;s t-test</div>
+            <div><b>Control n:</b> 45,000</div>
+            <div><b>Treatment n:</b> 45,000</div>
+            <div><b>Abs. difference:</b> 0.2859</div>
+            <div><b>Rel. uplift:</b> 9.23%</div>
+            <div><b>95% CI (abs diff):</b> [0.2677, 0.3042]</div>
+            <div><b>Test statistic:</b> 30.71</div>
+            <div><b>p-value (raw):</b> 5.369e-206</div>
+            <div><b>p-value (BH-adj):</b> 4.027e-205</div>
+            <div><b>MDE (relative, 80% power):</b> 0.84%</div>
+            <div><b>Desired direction:</b> increase</div>
+            <div><b>Interim looks (peeks):</b> 0</div>
+          </div>
+          
+        </div></td>
+      </tr>
+    
+      <tr class="main" data-verdict="ship" data-search="exp-023 bundle recommendation" onclick="toggle(this)">
+        <td><b>EXP-023</b><br><span style="color:var(--muted)">Bundle recommendation</span></td>
+        <td>mean</td>
+        <td class="num" data-v="47.965886">
+          47.97
+        </td>
+        <td class="num" data-v="49.660449">
+          49.66
+        </td>
+        <td class="num pos" data-v="0.035328504095598325">3.53%</td>
+        <td class="num" data-v="1.3837098759273635e-173">1.384e-173</td>
+        <td class="num" data-v="8.302259255564181e-173">8.302e-173</td>
+        <td data-v="1">
+          <span class="sigdot sig-yes"></span>yes
+        </td>
+        <td data-v="ship"><span class="badge ship">ship</span></td>
+      </tr>
+      <tr class="detail">
+        <td colspan="9"><div class="box">
+          <p class="reason"><b>Why:</b> Significant after BH correction (p_adj=8.302e-173), +3.53% in the desired direction, above the 0.5% practical floor.</p>
+          <div class="kv">
+            <div><b>Test:</b> Welch&#39;s t-test</div>
+            <div><b>Control n:</b> 55,000</div>
+            <div><b>Treatment n:</b> 55,000</div>
+            <div><b>Abs. difference:</b> 1.695</div>
+            <div><b>Rel. uplift:</b> 3.53%</div>
+            <div><b>95% CI (abs diff):</b> [1.577, 1.813]</div>
+            <div><b>Test statistic:</b> 28.14</div>
+            <div><b>p-value (raw):</b> 1.384e-173</div>
+            <div><b>p-value (BH-adj):</b> 8.302e-173</div>
+            <div><b>MDE (relative, 80% power):</b> 0.35%</div>
+            <div><b>Desired direction:</b> increase</div>
+            <div><b>Interim looks (peeks):</b> 0</div>
+          </div>
+          
+        </div></td>
+      </tr>
+    
+      <tr class="main" data-verdict="ship" data-search="exp-030 homepage hero rework" onclick="toggle(this)">
+        <td><b>EXP-030</b><br><span style="color:var(--muted)">Homepage hero rework</span></td>
+        <td>mean</td>
+        <td class="num" data-v="59.987929">
+          59.99
+        </td>
+        <td class="num" data-v="61.232408">
+          61.23
+        </td>
+        <td class="num pos" data-v="0.020745490313559555">2.07%</td>
+        <td class="num" data-v="1.5307305827066905e-168">1.531e-168</td>
+        <td class="num" data-v="7.653652913533453e-168">7.654e-168</td>
+        <td data-v="1">
+          <span class="sigdot sig-yes"></span>yes
+        </td>
+        <td data-v="ship"><span class="badge ship">ship</span></td>
+      </tr>
+      <tr class="detail">
+        <td colspan="9"><div class="box">
+          <p class="reason"><b>Why:</b> Significant after BH correction (p_adj=7.654e-168), +2.07% in the desired direction, above the 0.5% practical floor.</p>
+          <div class="kv">
+            <div><b>Test:</b> Welch&#39;s t-test</div>
+            <div><b>Control n:</b> 120,000</div>
+            <div><b>Treatment n:</b> 120,000</div>
+            <div><b>Abs. difference:</b> 1.244</div>
+            <div><b>Rel. uplift:</b> 2.07%</div>
+            <div><b>95% CI (abs diff):</b> [1.156, 1.333]</div>
+            <div><b>Test statistic:</b> 27.69</div>
+            <div><b>p-value (raw):</b> 1.531e-168</div>
+            <div><b>p-value (BH-adj):</b> 7.654e-168</div>
+            <div><b>MDE (relative, 80% power):</b> 0.21%</div>
+            <div><b>Desired direction:</b> increase</div>
+            <div><b>Interim looks (peeks):</b> 0</div>
+          </div>
+          
+        </div></td>
+      </tr>
+    
+      <tr class="main" data-verdict="ship" data-search="exp-026 notif frequency (peeked x8)" onclick="toggle(this)">
+        <td><b>EXP-026</b><br><span style="color:var(--muted)">Notif frequency (peeked x8)</span></td>
+        <td>mean</td>
+        <td class="num" data-v="21.964382">
+          21.96
+        </td>
+        <td class="num" data-v="23.230846">
+          23.23
+        </td>
+        <td class="num pos" data-v="0.057659896827509154">5.77%</td>
+        <td class="num" data-v="8.178918125251092e-55">8.179e-55</td>
+        <td class="num" data-v="3.5052506251076107e-54">3.505e-54</td>
+        <td data-v="1">
+          <span class="sigdot sig-yes"></span>yes
+        </td>
+        <td data-v="ship"><span class="badge ship">ship</span></td>
+      </tr>
+      <tr class="detail">
+        <td colspan="9"><div class="box">
+          <p class="reason"><b>Why:</b> Significant after BH correction (p_adj=3.505e-54), +5.77% in the desired direction, above the 0.5% practical floor.</p>
+          <div class="kv">
+            <div><b>Test:</b> Welch&#39;s t-test</div>
+            <div><b>Control n:</b> 15,000</div>
+            <div><b>Treatment n:</b> 15,000</div>
+            <div><b>Abs. difference:</b> 1.266</div>
+            <div><b>Rel. uplift:</b> 5.77%</div>
+            <div><b>95% CI (abs diff):</b> [1.108, 1.425]</div>
+            <div><b>Test statistic:</b> 15.62</div>
+            <div><b>p-value (raw):</b> 8.179e-55</div>
+            <div><b>p-value (BH-adj):</b> 3.505e-54</div>
+            <div><b>MDE (relative, 80% power):</b> 1.03%</div>
+            <div><b>Desired direction:</b> increase</div>
+            <div><b>Interim looks (peeks):</b> 8</div>
+          </div>
+          
+          <div class="flags"><b style="font-size:12px;color:var(--muted)">Flags:</b>
+            <span class="flag">peeking_no_alpha_spending</span>
+          </div>
+          
+        </div></td>
+      </tr>
+    
+      <tr class="main" data-verdict="ship" data-search="exp-002 one-click reorder" onclick="toggle(this)">
+        <td><b>EXP-002</b><br><span style="color:var(--muted)">One-click reorder</span></td>
+        <td>proportion</td>
+        <td class="num" data-v="0.044433">
+          4.44%
+        </td>
+        <td class="num" data-v="0.052783">
+          5.28%
+        </td>
+        <td class="num pos" data-v="0.1879233902729952">18.79%</td>
+        <td class="num" data-v="1.7519716661206973e-11">1.752e-11</td>
+        <td class="num" data-v="5.839905553735659e-11">5.84e-11</td>
+        <td data-v="1">
+          <span class="sigdot sig-yes"></span>yes
+        </td>
+        <td data-v="ship"><span class="badge ship">ship</span></td>
+      </tr>
+      <tr class="detail">
+        <td colspan="9"><div class="box">
+          <p class="reason"><b>Why:</b> Significant after BH correction (p_adj=5.84e-11), +18.79% in the desired direction, above the 0.5% practical floor.</p>
+          <div class="kv">
+            <div><b>Test:</b> two-proportion z-test</div>
+            <div><b>Control n:</b> 60,000</div>
+            <div><b>Treatment n:</b> 60,000</div>
+            <div><b>Abs. difference:</b> 0.00835</div>
+            <div><b>Rel. uplift:</b> 18.79%</div>
+            <div><b>95% CI (abs diff):</b> [0.005917, 0.01078]</div>
+            <div><b>Test statistic:</b> 6.725</div>
+            <div><b>p-value (raw):</b> 1.752e-11</div>
+            <div><b>p-value (BH-adj):</b> 5.84e-11</div>
+            <div><b>MDE (relative, 80% power):</b> 7.50%</div>
+            <div><b>Desired direction:</b> increase</div>
+            <div><b>Interim looks (peeks):</b> 0</div>
+          </div>
+          
+        </div></td>
+      </tr>
+    
+      <tr class="main" data-verdict="ship" data-search="exp-027 faster page (bounce rate)" onclick="toggle(this)">
+        <td><b>EXP-027</b><br><span style="color:var(--muted)">Faster page (bounce rate)</span></td>
+        <td>proportion</td>
+        <td class="num" data-v="0.348911">
+          34.89%
+        </td>
+        <td class="num" data-v="0.330978">
+          33.10%
+        </td>
+        <td class="num neg" data-v="-0.05139706114166659">-5.14%</td>
+        <td class="num" data-v="1.3571143766680666e-08">1.357e-08</td>
+        <td class="num" data-v="4.0713431300041996e-08">4.071e-08</td>
+        <td data-v="1">
+          <span class="sigdot sig-yes"></span>yes
+        </td>
+        <td data-v="ship"><span class="badge ship">ship</span></td>
+      </tr>
+      <tr class="detail">
+        <td colspan="9"><div class="box">
+          <p class="reason"><b>Why:</b> Significant after BH correction (p_adj=4.071e-08), -5.14% in the desired direction, above the 0.5% practical floor.</p>
+          <div class="kv">
+            <div><b>Test:</b> two-proportion z-test</div>
+            <div><b>Control n:</b> 45,000</div>
+            <div><b>Treatment n:</b> 45,000</div>
+            <div><b>Abs. difference:</b> -0.01793</div>
+            <div><b>Rel. uplift:</b> -5.14%</div>
+            <div><b>95% CI (abs diff):</b> [-0.02412, -0.01174]</div>
+            <div><b>Test statistic:</b> -5.679</div>
+            <div><b>p-value (raw):</b> 1.357e-08</div>
+            <div><b>p-value (BH-adj):</b> 4.071e-08</div>
+            <div><b>MDE (relative, 80% power):</b> 2.55%</div>
+            <div><b>Desired direction:</b> decrease</div>
+            <div><b>Interim looks (peeks):</b> 0</div>
+          </div>
+          
+        </div></td>
+      </tr>
+    
+      <tr class="main" data-verdict="ship" data-search="exp-004 simplified signup form" onclick="toggle(this)">
+        <td><b>EXP-004</b><br><span style="color:var(--muted)">Simplified signup form</span></td>
+        <td>proportion</td>
+        <td class="num" data-v="0.21996">
+          22.00%
+        </td>
+        <td class="num" data-v="0.23396">
+          23.40%
+        </td>
+        <td class="num pos" data-v="0.06364793598836158">6.36%</td>
+        <td class="num" data-v="1.258937103333511e-07">1.259e-07</td>
+        <td class="num" data-v="2.905239469231179e-07">2.905e-07</td>
+        <td data-v="1">
+          <span class="sigdot sig-yes"></span>yes
+        </td>
+        <td data-v="ship"><span class="badge ship">ship</span></td>
+      </tr>
+      <tr class="detail">
+        <td colspan="9"><div class="box">
+          <p class="reason"><b>Why:</b> Significant after BH correction (p_adj=2.905e-07), +6.36% in the desired direction, above the 0.5% practical floor.</p>
+          <div class="kv">
+            <div><b>Test:</b> two-proportion z-test</div>
+            <div><b>Control n:</b> 50,000</div>
+            <div><b>Treatment n:</b> 50,000</div>
+            <div><b>Abs. difference:</b> 0.014</div>
+            <div><b>Rel. uplift:</b> 6.36%</div>
+            <div><b>95% CI (abs diff):</b> [0.008808, 0.01919]</div>
+            <div><b>Test statistic:</b> 5.285</div>
+            <div><b>p-value (raw):</b> 1.259e-07</div>
+            <div><b>p-value (BH-adj):</b> 2.905e-07</div>
+            <div><b>MDE (relative, 80% power):</b> 3.34%</div>
+            <div><b>Desired direction:</b> increase</div>
+            <div><b>Interim looks (peeks):</b> 0</div>
+          </div>
+          
+        </div></td>
+      </tr>
+    
+      <tr class="main" data-verdict="ship" data-search="exp-001 checkout button color" onclick="toggle(this)">
+        <td><b>EXP-001</b><br><span style="color:var(--muted)">Checkout button color</span></td>
+        <td>proportion</td>
+        <td class="num" data-v="0.118625">
+          11.86%
+        </td>
+        <td class="num" data-v="0.1305">
+          13.05%
+        </td>
+        <td class="num pos" data-v="0.10010537407797691">10.01%</td>
+        <td class="num" data-v="3.664614579865946e-07">3.665e-07</td>
+        <td class="num" data-v="7.85274552828417e-07">7.853e-07</td>
+        <td data-v="1">
+          <span class="sigdot sig-yes"></span>yes
+        </td>
+        <td data-v="ship"><span class="badge ship">ship</span></td>
+      </tr>
+      <tr class="detail">
+        <td colspan="9"><div class="box">
+          <p class="reason"><b>Why:</b> Significant after BH correction (p_adj=7.853e-07), +10.01% in the desired direction, above the 0.5% practical floor.</p>
+          <div class="kv">
+            <div><b>Test:</b> two-proportion z-test</div>
+            <div><b>Control n:</b> 40,000</div>
+            <div><b>Treatment n:</b> 40,000</div>
+            <div><b>Abs. difference:</b> 0.01188</div>
+            <div><b>Rel. uplift:</b> 10.01%</div>
+            <div><b>95% CI (abs diff):</b> [0.007299, 0.01645]</div>
+            <div><b>Test statistic:</b> 5.086</div>
+            <div><b>p-value (raw):</b> 3.665e-07</div>
+            <div><b>p-value (BH-adj):</b> 7.853e-07</div>
+            <div><b>MDE (relative, 80% power):</b> 5.40%</div>
+            <div><b>Desired direction:</b> increase</div>
+            <div><b>Interim looks (peeks):</b> 0</div>
+          </div>
+          
+        </div></td>
+      </tr>
+    
+      <tr class="main" data-verdict="ship" data-search="exp-025 autoplay video (peeked x5)" onclick="toggle(this)">
+        <td><b>EXP-025</b><br><span style="color:var(--muted)">Autoplay video (peeked x5)</span></td>
+        <td>proportion</td>
+        <td class="num" data-v="0.09285">
+          9.29%
+        </td>
+        <td class="num" data-v="0.1079">
+          10.79%
+        </td>
+        <td class="num pos" data-v="0.16208939149165313">16.21%</td>
+        <td class="num" data-v="5.490425400627091e-07">5.49e-07</td>
+        <td class="num" data-v="1.0980850801254183e-06">1.098e-06</td>
+        <td data-v="1">
+          <span class="sigdot sig-yes"></span>yes
+        </td>
+        <td data-v="ship"><span class="badge ship">ship</span></td>
+      </tr>
+      <tr class="detail">
+        <td colspan="9"><div class="box">
+          <p class="reason"><b>Why:</b> Significant after BH correction (p_adj=1.098e-06), +16.21% in the desired direction, above the 0.5% practical floor.</p>
+          <div class="kv">
+            <div><b>Test:</b> two-proportion z-test</div>
+            <div><b>Control n:</b> 20,000</div>
+            <div><b>Treatment n:</b> 20,000</div>
+            <div><b>Abs. difference:</b> 0.01505</div>
+            <div><b>Rel. uplift:</b> 16.21%</div>
+            <div><b>95% CI (abs diff):</b> [0.009162, 0.02094]</div>
+            <div><b>Test statistic:</b> 5.008</div>
+            <div><b>p-value (raw):</b> 5.49e-07</div>
+            <div><b>p-value (BH-adj):</b> 1.098e-06</div>
+            <div><b>MDE (relative, 80% power):</b> 8.76%</div>
+            <div><b>Desired direction:</b> increase</div>
+            <div><b>Interim looks (peeks):</b> 5</div>
+          </div>
+          
+          <div class="flags"><b style="font-size:12px;color:var(--muted)">Flags:</b>
+            <span class="flag">peeking_no_alpha_spending</span>
+          </div>
+          
+        </div></td>
+      </tr>
+    
+      <tr class="main" data-verdict="ship" data-search="exp-022 guest checkout" onclick="toggle(this)">
+        <td><b>EXP-022</b><br><span style="color:var(--muted)">Guest checkout</span></td>
+        <td>proportion</td>
+        <td class="num" data-v="0.159029">
+          15.90%
+        </td>
+        <td class="num" data-v="0.165557">
+          16.56%
+        </td>
+        <td class="num pos" data-v="0.041049116827748436">4.10%</td>
+        <td class="num" data-v="0.0009256118450956393">0.0009256</td>
+        <td class="num" data-v="0.001633432667815834">0.001633</td>
+        <td data-v="1">
+          <span class="sigdot sig-yes"></span>yes
+        </td>
+        <td data-v="ship"><span class="badge ship">ship</span></td>
+      </tr>
+      <tr class="detail">
+        <td colspan="9"><div class="box">
+          <p class="reason"><b>Why:</b> Significant after BH correction (p_adj=0.001633), +4.10% in the desired direction, above the 0.5% practical floor.</p>
+          <div class="kv">
+            <div><b>Test:</b> two-proportion z-test</div>
+            <div><b>Control n:</b> 70,000</div>
+            <div><b>Treatment n:</b> 70,000</div>
+            <div><b>Abs. difference:</b> 0.006528</div>
+            <div><b>Rel. uplift:</b> 4.10%</div>
+            <div><b>95% CI (abs diff):</b> [0.002665, 0.01039]</div>
+            <div><b>Test statistic:</b> 3.312</div>
+            <div><b>p-value (raw):</b> 0.0009256</div>
+            <div><b>p-value (BH-adj):</b> 0.001633</div>
+            <div><b>MDE (relative, 80% power):</b> 3.44%</div>
+            <div><b>Desired direction:</b> increase</div>
+            <div><b>Interim looks (peeks):</b> 0</div>
+          </div>
+          
+        </div></td>
+      </tr>
+    
+      <tr class="main" data-verdict="ship" data-search="exp-010 premium banner copy" onclick="toggle(this)">
+        <td><b>EXP-010</b><br><span style="color:var(--muted)">Premium banner copy</span></td>
+        <td>mean</td>
+        <td class="num" data-v="25.052418">
+          25.05
+        </td>
+        <td class="num" data-v="27.616047">
+          27.62
+        </td>
+        <td class="num pos" data-v="0.1023306013814714">10.23%</td>
+        <td class="num" data-v="0.0013009152127281822">0.001301</td>
+        <td class="num" data-v="0.002168192021213637">0.002168</td>
+        <td data-v="1">
+          <span class="sigdot sig-yes"></span>yes
+        </td>
+        <td data-v="ship"><span class="badge ship">ship</span></td>
+      </tr>
+      <tr class="detail">
+        <td colspan="9"><div class="box">
+          <p class="reason"><b>Why:</b> Significant after BH correction (p_adj=0.002168), +10.23% in the desired direction, above the 0.5% practical floor.</p>
+          <div class="kv">
+            <div><b>Test:</b> Welch&#39;s t-test</div>
+            <div><b>Control n:</b> 450</div>
+            <div><b>Treatment n:</b> 450</div>
+            <div><b>Abs. difference:</b> 2.564</div>
+            <div><b>Rel. uplift:</b> 10.23%</div>
+            <div><b>95% CI (abs diff):</b> [1.004, 4.123]</div>
+            <div><b>Test statistic:</b> 3.226</div>
+            <div><b>p-value (raw):</b> 0.001301</div>
+            <div><b>p-value (BH-adj):</b> 0.002168</div>
+            <div><b>MDE (relative, 80% power):</b> 8.89%</div>
+            <div><b>Desired direction:</b> increase</div>
+            <div><b>Interim looks (peeks):</b> 0</div>
+          </div>
+          
+          <div class="flags"><b style="font-size:12px;color:var(--muted)">Flags:</b>
+            <span class="flag">sample_below_min</span>
+          </div>
+          
+        </div></td>
+      </tr>
+    
+      <tr class="main" data-verdict="ship" data-search="exp-024 progress bar in cart" onclick="toggle(this)">
+        <td><b>EXP-024</b><br><span style="color:var(--muted)">Progress bar in cart</span></td>
+        <td>proportion</td>
+        <td class="num" data-v="0.138187">
+          13.82%
+        </td>
+        <td class="num" data-v="0.145187">
+          14.52%
+        </td>
+        <td class="num pos" data-v="0.05065599513702451">5.07%</td>
+        <td class="num" data-v="0.0018728961728004484">0.001873</td>
+        <td class="num" data-v="0.0029572044833691287">0.002957</td>
+        <td data-v="1">
+          <span class="sigdot sig-yes"></span>yes
+        </td>
+        <td data-v="ship"><span class="badge ship">ship</span></td>
+      </tr>
+      <tr class="detail">
+        <td colspan="9"><div class="box">
+          <p class="reason"><b>Why:</b> Significant after BH correction (p_adj=0.002957), +5.07% in the desired direction, above the 0.5% practical floor.</p>
+          <div class="kv">
+            <div><b>Test:</b> two-proportion z-test</div>
+            <div><b>Control n:</b> 48,000</div>
+            <div><b>Treatment n:</b> 48,000</div>
+            <div><b>Abs. difference:</b> 0.007</div>
+            <div><b>Rel. uplift:</b> 5.07%</div>
+            <div><b>95% CI (abs diff):</b> [0.002588, 0.01141]</div>
+            <div><b>Test statistic:</b> 3.11</div>
+            <div><b>p-value (raw):</b> 0.001873</div>
+            <div><b>p-value (BH-adj):</b> 0.002957</div>
+            <div><b>MDE (relative, 80% power):</b> 4.52%</div>
+            <div><b>Desired direction:</b> increase</div>
+            <div><b>Interim looks (peeks):</b> 0</div>
+          </div>
+          
+        </div></td>
+      </tr>
+    
+      <tr class="main" data-verdict="no_ship" data-search="exp-007 ads density +2 slots" onclick="toggle(this)">
+        <td><b>EXP-007</b><br><span style="color:var(--muted)">Ads density +2 slots</span></td>
+        <td>mean</td>
+        <td class="num" data-v="41.079006">
+          41.08
+        </td>
+        <td class="num" data-v="38.897572">
+          38.9
+        </td>
+        <td class="num neg" data-v="-0.05310337840209675">-5.31%</td>
+        <td class="num" data-v="5.3761306735168496e-282">5.376e-282</td>
+        <td class="num" data-v="5.3761306735168494e-281">5.376e-281</td>
+        <td data-v="1">
+          <span class="sigdot sig-yes"></span>yes
+        </td>
+        <td data-v="no_ship"><span class="badge no_ship">no ship</span></td>
+      </tr>
+      <tr class="detail">
+        <td colspan="9"><div class="box">
+          <p class="reason"><b>Why:</b> Significant after correction but effect is a regression (-5.31%, wrong direction).</p>
+          <div class="kv">
+            <div><b>Test:</b> Welch&#39;s t-test</div>
+            <div><b>Control n:</b> 35,000</div>
+            <div><b>Treatment n:</b> 35,000</div>
+            <div><b>Abs. difference:</b> -2.181</div>
+            <div><b>Rel. uplift:</b> -5.31%</div>
+            <div><b>95% CI (abs diff):</b> [-2.3, -2.063]</div>
+            <div><b>Test statistic:</b> -36.05</div>
+            <div><b>p-value (raw):</b> 5.376e-282</div>
+            <div><b>p-value (BH-adj):</b> 5.376e-281</div>
+            <div><b>MDE (relative, 80% power):</b> 0.41%</div>
+            <div><b>Desired direction:</b> increase</div>
+            <div><b>Interim looks (peeks):</b> 0</div>
+          </div>
+          
+        </div></td>
+      </tr>
+    
+      <tr class="main" data-verdict="no_ship" data-search="exp-006 aggressive upsell modal" onclick="toggle(this)">
+        <td><b>EXP-006</b><br><span style="color:var(--muted)">Aggressive upsell modal</span></td>
+        <td>proportion</td>
+        <td class="num" data-v="0.18064">
+          18.06%
+        </td>
+        <td class="num" data-v="0.16342">
+          16.34%
+        </td>
+        <td class="num neg" data-v="-0.09532772364924705">-9.53%</td>
+        <td class="num" data-v="5.421504473585832e-13">5.422e-13</td>
+        <td class="num" data-v="2.033064177594687e-12">2.033e-12</td>
+        <td data-v="1">
+          <span class="sigdot sig-yes"></span>yes
+        </td>
+        <td data-v="no_ship"><span class="badge no_ship">no ship</span></td>
+      </tr>
+      <tr class="detail">
+        <td colspan="9"><div class="box">
+          <p class="reason"><b>Why:</b> Significant after correction but effect is a regression (-9.53%, wrong direction).</p>
+          <div class="kv">
+            <div><b>Test:</b> two-proportion z-test</div>
+            <div><b>Control n:</b> 50,000</div>
+            <div><b>Treatment n:</b> 50,000</div>
+            <div><b>Abs. difference:</b> -0.01722</div>
+            <div><b>Rel. uplift:</b> -9.53%</div>
+            <div><b>95% CI (abs diff):</b> [-0.0219, -0.01254]</div>
+            <div><b>Test statistic:</b> -7.214</div>
+            <div><b>p-value (raw):</b> 5.422e-13</div>
+            <div><b>p-value (BH-adj):</b> 2.033e-12</div>
+            <div><b>MDE (relative, 80% power):</b> 3.77%</div>
+            <div><b>Desired direction:</b> increase</div>
+            <div><b>Interim looks (peeks):</b> 0</div>
+          </div>
+          
+        </div></td>
+      </tr>
+    
+      <tr class="main" data-verdict="no_ship" data-search="exp-008 mandatory account gate" onclick="toggle(this)">
+        <td><b>EXP-008</b><br><span style="color:var(--muted)">Mandatory account gate</span></td>
+        <td>proportion</td>
+        <td class="num" data-v="0.301675">
+          30.17%
+        </td>
+        <td class="num" data-v="0.28425">
+          28.43%
+        </td>
+        <td class="num neg" data-v="-0.05776083533604051">-5.78%</td>
+        <td class="num" data-v="6.145084471103596e-08">6.145e-08</td>
+        <td class="num" data-v="1.536271117775899e-07">1.536e-07</td>
+        <td data-v="1">
+          <span class="sigdot sig-yes"></span>yes
+        </td>
+        <td data-v="no_ship"><span class="badge no_ship">no ship</span></td>
+      </tr>
+      <tr class="detail">
+        <td colspan="9"><div class="box">
+          <p class="reason"><b>Why:</b> Significant after correction but effect is a regression (-5.78%, wrong direction).</p>
+          <div class="kv">
+            <div><b>Test:</b> two-proportion z-test</div>
+            <div><b>Control n:</b> 40,000</div>
+            <div><b>Treatment n:</b> 40,000</div>
+            <div><b>Abs. difference:</b> -0.01743</div>
+            <div><b>Rel. uplift:</b> -5.78%</div>
+            <div><b>95% CI (abs diff):</b> [-0.02373, -0.01112]</div>
+            <div><b>Test statistic:</b> -5.415</div>
+            <div><b>p-value (raw):</b> 6.145e-08</div>
+            <div><b>p-value (BH-adj):</b> 1.536e-07</div>
+            <div><b>MDE (relative, 80% power):</b> 3.01%</div>
+            <div><b>Desired direction:</b> increase</div>
+            <div><b>Interim looks (peeks):</b> 0</div>
+          </div>
+          
+        </div></td>
+      </tr>
+    
+      <tr class="main" data-verdict="no_ship" data-search="exp-016 loading spinner style" onclick="toggle(this)">
+        <td><b>EXP-016</b><br><span style="color:var(--muted)">Loading spinner style</span></td>
+        <td>mean</td>
+        <td class="num" data-v="18.039868">
+          18.04
+        </td>
+        <td class="num" data-v="17.88904">
+          17.89
+        </td>
+        <td class="num neg" data-v="-0.008360815056961454">-0.84%</td>
+        <td class="num" data-v="3.3145459792701046e-05">3.315e-05</td>
+        <td class="num" data-v="6.214773711131446e-05">6.215e-05</td>
+        <td data-v="1">
+          <span class="sigdot sig-yes"></span>yes
+        </td>
+        <td data-v="no_ship"><span class="badge no_ship">no ship</span></td>
+      </tr>
+      <tr class="detail">
+        <td colspan="9"><div class="box">
+          <p class="reason"><b>Why:</b> Significant after correction but effect is a regression (-0.84%, wrong direction).</p>
+          <div class="kv">
+            <div><b>Test:</b> Welch&#39;s t-test</div>
+            <div><b>Control n:</b> 38,000</div>
+            <div><b>Treatment n:</b> 38,000</div>
+            <div><b>Abs. difference:</b> -0.1508</div>
+            <div><b>Rel. uplift:</b> -0.84%</div>
+            <div><b>95% CI (abs diff):</b> [-0.222, -0.07961]</div>
+            <div><b>Test statistic:</b> -4.151</div>
+            <div><b>p-value (raw):</b> 3.315e-05</div>
+            <div><b>p-value (BH-adj):</b> 6.215e-05</div>
+            <div><b>MDE (relative, 80% power):</b> 0.56%</div>
+            <div><b>Desired direction:</b> increase</div>
+            <div><b>Interim looks (peeks):</b> 0</div>
+          </div>
+          
+        </div></td>
+      </tr>
+    
+      <tr class="main" data-verdict="needs_more_data" data-search="exp-011 referral nudge (pilot)" onclick="toggle(this)">
+        <td><b>EXP-011</b><br><span style="color:var(--muted)">Referral nudge (pilot)</span></td>
+        <td>proportion</td>
+        <td class="num" data-v="0.065">
+          6.50%
+        </td>
+        <td class="num" data-v="0.08625">
+          8.62%
+        </td>
+        <td class="num pos" data-v="0.32692307692307676">32.69%</td>
+        <td class="num" data-v="0.10796001582772882">0.108</td>
+        <td class="num" data-v="0.1472182034014484">0.1472</td>
+        <td data-v="0">
+          <span class="sigdot sig-no"></span>no
+        </td>
+        <td data-v="needs_more_data"><span class="badge needs_more_data">needs more data</span></td>
+      </tr>
+      <tr class="detail">
+        <td colspan="9"><div class="box">
+          <p class="reason"><b>Why:</b> Not significant, but underpowered: n_min=800 and observed effect (+32.69%) is within noise (MDE=53.13%). Absence of signal is uninformative.</p>
+          <div class="kv">
+            <div><b>Test:</b> two-proportion z-test</div>
+            <div><b>Control n:</b> 800</div>
+            <div><b>Treatment n:</b> 800</div>
+            <div><b>Abs. difference:</b> 0.02125</div>
+            <div><b>Rel. uplift:</b> 32.69%</div>
+            <div><b>95% CI (abs diff):</b> [-0.00464, 0.04714]</div>
+            <div><b>Test statistic:</b> 1.607</div>
+            <div><b>p-value (raw):</b> 0.108</div>
+            <div><b>p-value (BH-adj):</b> 0.1472</div>
+            <div><b>MDE (relative, 80% power):</b> 53.13%</div>
+            <div><b>Desired direction:</b> increase</div>
+            <div><b>Interim looks (peeks):</b> 0</div>
+          </div>
+          
+          <div class="flags"><b style="font-size:12px;color:var(--muted)">Flags:</b>
+            <span class="flag">observed_effect_below_mde</span><span class="flag">sample_below_min</span>
+          </div>
+          
+        </div></td>
+      </tr>
+    
+      <tr class="main" data-verdict="needs_more_data" data-search="exp-012 dark mode toggle placement" onclick="toggle(this)">
+        <td><b>EXP-012</b><br><span style="color:var(--muted)">Dark mode toggle placement</span></td>
+        <td>proportion</td>
+        <td class="num" data-v="0.076">
+          7.60%
+        </td>
+        <td class="num" data-v="0.094">
+          9.40%
+        </td>
+        <td class="num pos" data-v="0.23684210526315794">23.68%</td>
+        <td class="num" data-v="0.3074808182639873">0.3075</td>
+        <td class="num" data-v="0.40106193686607045">0.4011</td>
+        <td data-v="0">
+          <span class="sigdot sig-no"></span>no
+        </td>
+        <td data-v="needs_more_data"><span class="badge needs_more_data">needs more data</span></td>
+      </tr>
+      <tr class="detail">
+        <td colspan="9"><div class="box">
+          <p class="reason"><b>Why:</b> Not significant, but underpowered: n_min=500 and observed effect (+23.68%) is within noise (MDE=61.78%). Absence of signal is uninformative.</p>
+          <div class="kv">
+            <div><b>Test:</b> two-proportion z-test</div>
+            <div><b>Control n:</b> 500</div>
+            <div><b>Treatment n:</b> 500</div>
+            <div><b>Abs. difference:</b> 0.018</div>
+            <div><b>Rel. uplift:</b> 23.68%</div>
+            <div><b>95% CI (abs diff):</b> [-0.01655, 0.05255]</div>
+            <div><b>Test statistic:</b> 1.021</div>
+            <div><b>p-value (raw):</b> 0.3075</div>
+            <div><b>p-value (BH-adj):</b> 0.4011</div>
+            <div><b>MDE (relative, 80% power):</b> 61.78%</div>
+            <div><b>Desired direction:</b> increase</div>
+            <div><b>Interim looks (peeks):</b> 0</div>
+          </div>
+          
+          <div class="flags"><b style="font-size:12px;color:var(--muted)">Flags:</b>
+            <span class="flag">observed_effect_below_mde</span><span class="flag">sample_below_min</span>
+          </div>
+          
+        </div></td>
+      </tr>
+    
+      <tr class="main" data-verdict="needs_more_data" data-search="exp-009 onboarding tooltip" onclick="toggle(this)">
+        <td><b>EXP-009</b><br><span style="color:var(--muted)">Onboarding tooltip</span></td>
+        <td>proportion</td>
+        <td class="num" data-v="0.126667">
+          12.67%
+        </td>
+        <td class="num" data-v="0.143333">
+          14.33%
+        </td>
+        <td class="num pos" data-v="0.13157333796489998">13.16%</td>
+        <td class="num" data-v="0.39826253018927504">0.3983</td>
+        <td class="num" data-v="0.4779150362271301">0.4779</td>
+        <td data-v="0">
+          <span class="sigdot sig-no"></span>no
+        </td>
+        <td data-v="needs_more_data"><span class="badge needs_more_data">needs more data</span></td>
+      </tr>
+      <tr class="detail">
+        <td colspan="9"><div class="box">
+          <p class="reason"><b>Why:</b> Not significant, but underpowered: n_min=600 and observed effect (+13.16%) is within noise (MDE=42.47%). Absence of signal is uninformative.</p>
+          <div class="kv">
+            <div><b>Test:</b> two-proportion z-test</div>
+            <div><b>Control n:</b> 600</div>
+            <div><b>Treatment n:</b> 600</div>
+            <div><b>Abs. difference:</b> 0.01667</div>
+            <div><b>Rel. uplift:</b> 13.16%</div>
+            <div><b>95% CI (abs diff):</b> [-0.02199, 0.05532]</div>
+            <div><b>Test statistic:</b> 0.8447</div>
+            <div><b>p-value (raw):</b> 0.3983</div>
+            <div><b>p-value (BH-adj):</b> 0.4779</div>
+            <div><b>MDE (relative, 80% power):</b> 42.47%</div>
+            <div><b>Desired direction:</b> increase</div>
+            <div><b>Interim looks (peeks):</b> 0</div>
+          </div>
+          
+          <div class="flags"><b style="font-size:12px;color:var(--muted)">Flags:</b>
+            <span class="flag">observed_effect_below_mde</span><span class="flag">sample_below_min</span>
+          </div>
+          
+        </div></td>
+      </tr>
+    
+      <tr class="main" data-verdict="inconclusive" data-search="exp-018 rounding of prices .99" onclick="toggle(this)">
+        <td><b>EXP-018</b><br><span style="color:var(--muted)">Rounding of prices .99</span></td>
+        <td>mean</td>
+        <td class="num" data-v="11.994901">
+          11.99
+        </td>
+        <td class="num" data-v="12.037406">
+          12.04
+        </td>
+        <td class="num pos" data-v="0.0035435890633862036">0.35%</td>
+        <td class="num" data-v="4.119914946401831e-08">4.12e-08</td>
+        <td class="num" data-v="1.1236131672004993e-07">1.124e-07</td>
+        <td data-v="1">
+          <span class="sigdot sig-yes"></span>yes
+        </td>
+        <td data-v="inconclusive"><span class="badge inconclusive">inconclusive</span></td>
+      </tr>
+      <tr class="detail">
+        <td colspan="9"><div class="box">
+          <p class="reason"><b>Why:</b> Statistically significant but only +0.35% - below the 0.5% practical floor; not worth shipping.</p>
+          <div class="kv">
+            <div><b>Test:</b> Welch&#39;s t-test</div>
+            <div><b>Control n:</b> 300,000</div>
+            <div><b>Treatment n:</b> 300,000</div>
+            <div><b>Abs. difference:</b> 0.04251</div>
+            <div><b>Rel. uplift:</b> 0.35%</div>
+            <div><b>95% CI (abs diff):</b> [0.02732, 0.05769]</div>
+            <div><b>Test statistic:</b> 5.486</div>
+            <div><b>p-value (raw):</b> 4.12e-08</div>
+            <div><b>p-value (BH-adj):</b> 1.124e-07</div>
+            <div><b>MDE (relative, 80% power):</b> 0.18%</div>
+            <div><b>Desired direction:</b> increase</div>
+            <div><b>Interim looks (peeks):</b> 0</div>
+          </div>
+          
+        </div></td>
+      </tr>
+    
+      <tr class="main" data-verdict="inconclusive" data-search="exp-017 micro copy on cta" onclick="toggle(this)">
+        <td><b>EXP-017</b><br><span style="color:var(--muted)">Micro copy on CTA</span></td>
+        <td>proportion</td>
+        <td class="num" data-v="0.24922">
+          24.92%
+        </td>
+        <td class="num" data-v="0.251125">
+          25.11%
+        </td>
+        <td class="num pos" data-v="0.007643848808281799">0.76%</td>
+        <td class="num" data-v="0.04918052091041358">0.04918</td>
+        <td class="num" data-v="0.07377078136562037">0.07377</td>
+        <td data-v="0">
+          <span class="sigdot sig-no"></span>no
+        </td>
+        <td data-v="inconclusive"><span class="badge inconclusive">inconclusive</span></td>
+      </tr>
+      <tr class="detail">
+        <td colspan="9"><div class="box">
+          <p class="reason"><b>Why:</b> Adequately powered (n_min=400,000, MDE=1.09%) but no significant effect after correction (p_adj=0.07377). Flat result.</p>
+          <div class="kv">
+            <div><b>Test:</b> two-proportion z-test</div>
+            <div><b>Control n:</b> 400,000</div>
+            <div><b>Treatment n:</b> 400,000</div>
+            <div><b>Abs. difference:</b> 0.001905</div>
+            <div><b>Rel. uplift:</b> 0.76%</div>
+            <div><b>95% CI (abs diff):</b> [6.841e-06, 0.003803]</div>
+            <div><b>Test statistic:</b> 1.967</div>
+            <div><b>p-value (raw):</b> 0.04918</div>
+            <div><b>p-value (BH-adj):</b> 0.07377</div>
+            <div><b>MDE (relative, 80% power):</b> 1.09%</div>
+            <div><b>Desired direction:</b> increase</div>
+            <div><b>Interim looks (peeks):</b> 0</div>
+          </div>
+          
+          <div class="flags"><b style="font-size:12px;color:var(--muted)">Flags:</b>
+            <span class="flag">observed_effect_below_mde</span>
+          </div>
+          
+        </div></td>
+      </tr>
+    
+      <tr class="main" data-verdict="inconclusive" data-search="exp-014 font size +1px" onclick="toggle(this)">
+        <td><b>EXP-014</b><br><span style="color:var(--muted)">Font size +1px</span></td>
+        <td>mean</td>
+        <td class="num" data-v="30.053918">
+          30.05
+        </td>
+        <td class="num" data-v="29.985481">
+          29.99
+        </td>
+        <td class="num neg" data-v="-0.002277140704250255">-0.23%</td>
+        <td class="num" data-v="0.10699217539928414">0.107</td>
+        <td class="num" data-v="0.1472182034014484">0.1472</td>
+        <td data-v="0">
+          <span class="sigdot sig-no"></span>no
+        </td>
+        <td data-v="inconclusive"><span class="badge inconclusive">inconclusive</span></td>
+      </tr>
+      <tr class="detail">
+        <td colspan="9"><div class="box">
+          <p class="reason"><b>Why:</b> Adequately powered (n_min=40,000, MDE=0.40%) but no significant effect after correction (p_adj=0.1472). Flat result.</p>
+          <div class="kv">
+            <div><b>Test:</b> Welch&#39;s t-test</div>
+            <div><b>Control n:</b> 40,000</div>
+            <div><b>Treatment n:</b> 40,000</div>
+            <div><b>Abs. difference:</b> -0.06844</div>
+            <div><b>Rel. uplift:</b> -0.23%</div>
+            <div><b>95% CI (abs diff):</b> [-0.1517, 0.01478]</div>
+            <div><b>Test statistic:</b> -1.612</div>
+            <div><b>p-value (raw):</b> 0.107</div>
+            <div><b>p-value (BH-adj):</b> 0.1472</div>
+            <div><b>MDE (relative, 80% power):</b> 0.40%</div>
+            <div><b>Desired direction:</b> increase</div>
+            <div><b>Interim looks (peeks):</b> 0</div>
+          </div>
+          
+          <div class="flags"><b style="font-size:12px;color:var(--muted)">Flags:</b>
+            <span class="flag">observed_effect_below_mde</span>
+          </div>
+          
+        </div></td>
+      </tr>
+    
+      <tr class="main" data-verdict="inconclusive" data-search="exp-020 email subject b" onclick="toggle(this)">
+        <td><b>EXP-020</b><br><span style="color:var(--muted)">Email subject B</span></td>
+        <td>proportion</td>
+        <td class="num" data-v="0.129136">
+          12.91%
+        </td>
+        <td class="num" data-v="0.132">
+          13.20%
+        </td>
+        <td class="num pos" data-v="0.022178168752323174">2.22%</td>
+        <td class="num" data-v="0.37264797773243474">0.3726</td>
+        <td class="num" data-v="0.4658099721655435">0.4658</td>
+        <td data-v="0">
+          <span class="sigdot sig-no"></span>no
+        </td>
+        <td data-v="inconclusive"><span class="badge inconclusive">inconclusive</span></td>
+      </tr>
+      <tr class="detail">
+        <td colspan="9"><div class="box">
+          <p class="reason"><b>Why:</b> Adequately powered (n_min=22,000, MDE=6.94%) but no significant effect after correction (p_adj=0.4658). Flat result.</p>
+          <div class="kv">
+            <div><b>Test:</b> two-proportion z-test</div>
+            <div><b>Control n:</b> 22,000</div>
+            <div><b>Treatment n:</b> 22,000</div>
+            <div><b>Abs. difference:</b> 0.002864</div>
+            <div><b>Rel. uplift:</b> 2.22%</div>
+            <div><b>95% CI (abs diff):</b> [-0.003432, 0.00916]</div>
+            <div><b>Test statistic:</b> 0.8915</div>
+            <div><b>p-value (raw):</b> 0.3726</div>
+            <div><b>p-value (BH-adj):</b> 0.4658</div>
+            <div><b>MDE (relative, 80% power):</b> 6.94%</div>
+            <div><b>Desired direction:</b> increase</div>
+            <div><b>Interim looks (peeks):</b> 0</div>
+          </div>
+          
+          <div class="flags"><b style="font-size:12px;color:var(--muted)">Flags:</b>
+            <span class="flag">observed_effect_below_mde</span>
+          </div>
+          
+        </div></td>
+      </tr>
+    
+      <tr class="main" data-verdict="inconclusive" data-search="exp-013 footer link reorder" onclick="toggle(this)">
+        <td><b>EXP-013</b><br><span style="color:var(--muted)">Footer link reorder</span></td>
+        <td>proportion</td>
+        <td class="num" data-v="0.108967">
+          10.90%
+        </td>
+        <td class="num" data-v="0.110433">
+          11.04%
+        </td>
+        <td class="num pos" data-v="0.013453614397019364">1.35%</td>
+        <td class="num" data-v="0.4165050789463087">0.4165</td>
+        <td class="num" data-v="0.480582783399587">0.4806</td>
+        <td data-v="0">
+          <span class="sigdot sig-no"></span>no
+        </td>
+        <td data-v="inconclusive"><span class="badge inconclusive">inconclusive</span></td>
+      </tr>
+      <tr class="detail">
+        <td colspan="9"><div class="box">
+          <p class="reason"><b>Why:</b> Adequately powered (n_min=60,000, MDE=4.63%) but no significant effect after correction (p_adj=0.4806). Flat result.</p>
+          <div class="kv">
+            <div><b>Test:</b> two-proportion z-test</div>
+            <div><b>Control n:</b> 60,000</div>
+            <div><b>Treatment n:</b> 60,000</div>
+            <div><b>Abs. difference:</b> 0.001466</div>
+            <div><b>Rel. uplift:</b> 1.35%</div>
+            <div><b>95% CI (abs diff):</b> [-0.00207, 0.005002]</div>
+            <div><b>Test statistic:</b> 0.8125</div>
+            <div><b>p-value (raw):</b> 0.4165</div>
+            <div><b>p-value (BH-adj):</b> 0.4806</div>
+            <div><b>MDE (relative, 80% power):</b> 4.63%</div>
+            <div><b>Desired direction:</b> increase</div>
+            <div><b>Interim looks (peeks):</b> 0</div>
+          </div>
+          
+          <div class="flags"><b style="font-size:12px;color:var(--muted)">Flags:</b>
+            <span class="flag">observed_effect_below_mde</span>
+          </div>
+          
+        </div></td>
+      </tr>
+    
+      <tr class="main" data-verdict="inconclusive" data-search="exp-015 icon set refresh" onclick="toggle(this)">
+        <td><b>EXP-015</b><br><span style="color:var(--muted)">Icon set refresh</span></td>
+        <td>proportion</td>
+        <td class="num" data-v="0.199455">
+          19.95%
+        </td>
+        <td class="num" data-v="0.201018">
+          20.10%
+        </td>
+        <td class="num pos" data-v="0.007836354064826696">0.78%</td>
+        <td class="num" data-v="0.5171799542937234">0.5172</td>
+        <td class="num" data-v="0.5746443936596927">0.5746</td>
+        <td data-v="0">
+          <span class="sigdot sig-no"></span>no
+        </td>
+        <td data-v="inconclusive"><span class="badge inconclusive">inconclusive</span></td>
+      </tr>
+      <tr class="detail">
+        <td colspan="9"><div class="box">
+          <p class="reason"><b>Why:</b> Adequately powered (n_min=55,000, MDE=3.38%) but no significant effect after correction (p_adj=0.5746). Flat result.</p>
+          <div class="kv">
+            <div><b>Test:</b> two-proportion z-test</div>
+            <div><b>Control n:</b> 55,000</div>
+            <div><b>Treatment n:</b> 55,000</div>
+            <div><b>Abs. difference:</b> 0.001563</div>
+            <div><b>Rel. uplift:</b> 0.78%</div>
+            <div><b>95% CI (abs diff):</b> [-0.003167, 0.006293]</div>
+            <div><b>Test statistic:</b> 0.6477</div>
+            <div><b>p-value (raw):</b> 0.5172</div>
+            <div><b>p-value (BH-adj):</b> 0.5746</div>
+            <div><b>MDE (relative, 80% power):</b> 3.38%</div>
+            <div><b>Desired direction:</b> increase</div>
+            <div><b>Interim looks (peeks):</b> 0</div>
+          </div>
+          
+          <div class="flags"><b style="font-size:12px;color:var(--muted)">Flags:</b>
+            <span class="flag">observed_effect_below_mde</span>
+          </div>
+          
+        </div></td>
+      </tr>
+    
+      <tr class="main" data-verdict="inconclusive" data-search="exp-019 email subject a" onclick="toggle(this)">
+        <td><b>EXP-019</b><br><span style="color:var(--muted)">Email subject A</span></td>
+        <td>proportion</td>
+        <td class="num" data-v="0.127318">
+          12.73%
+        </td>
+        <td class="num" data-v="0.129091">
+          12.91%
+        </td>
+        <td class="num pos" data-v="0.013925760693696294">1.39%</td>
+        <td class="num" data-v="0.5780608787998659">0.5781</td>
+        <td class="num" data-v="0.6193509415712849">0.6194</td>
+        <td data-v="0">
+          <span class="sigdot sig-no"></span>no
+        </td>
+        <td data-v="inconclusive"><span class="badge inconclusive">inconclusive</span></td>
+      </tr>
+      <tr class="detail">
+        <td colspan="9"><div class="box">
+          <p class="reason"><b>Why:</b> Adequately powered (n_min=22,000, MDE=6.99%) but no significant effect after correction (p_adj=0.6194). Flat result.</p>
+          <div class="kv">
+            <div><b>Test:</b> two-proportion z-test</div>
+            <div><b>Control n:</b> 22,000</div>
+            <div><b>Treatment n:</b> 22,000</div>
+            <div><b>Abs. difference:</b> 0.001773</div>
+            <div><b>Rel. uplift:</b> 1.39%</div>
+            <div><b>95% CI (abs diff):</b> [-0.004475, 0.008021]</div>
+            <div><b>Test statistic:</b> 0.5562</div>
+            <div><b>p-value (raw):</b> 0.5781</div>
+            <div><b>p-value (BH-adj):</b> 0.6194</div>
+            <div><b>MDE (relative, 80% power):</b> 6.99%</div>
+            <div><b>Desired direction:</b> increase</div>
+            <div><b>Interim looks (peeks):</b> 0</div>
+          </div>
+          
+          <div class="flags"><b style="font-size:12px;color:var(--muted)">Flags:</b>
+            <span class="flag">observed_effect_below_mde</span>
+          </div>
+          
+        </div></td>
+      </tr>
+    
+      <tr class="main" data-verdict="inconclusive" data-search="exp-029 error-state redesign (errors)" onclick="toggle(this)">
+        <td><b>EXP-029</b><br><span style="color:var(--muted)">Error-state redesign (errors)</span></td>
+        <td>proportion</td>
+        <td class="num" data-v="0.039575">
+          3.96%
+        </td>
+        <td class="num" data-v="0.040175">
+          4.02%
+        </td>
+        <td class="num pos" data-v="0.015161086544535777">1.52%</td>
+        <td class="num" data-v="0.6645334388275299">0.6645</td>
+        <td class="num" data-v="0.6874483849939965">0.6874</td>
+        <td data-v="0">
+          <span class="sigdot sig-no"></span>no
+        </td>
+        <td data-v="inconclusive"><span class="badge inconclusive">inconclusive</span></td>
+      </tr>
+      <tr class="detail">
+        <td colspan="9"><div class="box">
+          <p class="reason"><b>Why:</b> Adequately powered (n_min=40,000, MDE=9.76%) but no significant effect after correction (p_adj=0.6874). Flat result.</p>
+          <div class="kv">
+            <div><b>Test:</b> two-proportion z-test</div>
+            <div><b>Control n:</b> 40,000</div>
+            <div><b>Treatment n:</b> 40,000</div>
+            <div><b>Abs. difference:</b> 0.0006</div>
+            <div><b>Rel. uplift:</b> 1.52%</div>
+            <div><b>95% CI (abs diff):</b> [-0.002112, 0.003312]</div>
+            <div><b>Test statistic:</b> 0.4337</div>
+            <div><b>p-value (raw):</b> 0.6645</div>
+            <div><b>p-value (BH-adj):</b> 0.6874</div>
+            <div><b>MDE (relative, 80% power):</b> 9.76%</div>
+            <div><b>Desired direction:</b> decrease</div>
+            <div><b>Interim looks (peeks):</b> 0</div>
+          </div>
+          
+          <div class="flags"><b style="font-size:12px;color:var(--muted)">Flags:</b>
+            <span class="flag">observed_effect_below_mde</span>
+          </div>
+          
+        </div></td>
+      </tr>
+    
+      <tr class="main" data-verdict="inconclusive" data-search="exp-021 push timing shift" onclick="toggle(this)">
+        <td><b>EXP-021</b><br><span style="color:var(--muted)">Push timing shift</span></td>
+        <td>proportion</td>
+        <td class="num" data-v="0.060333">
+          6.03%
+        </td>
+        <td class="num" data-v="0.060133">
+          6.01%
+        </td>
+        <td class="num neg" data-v="-0.0033149354416322544">-0.33%</td>
+        <td class="num" data-v="0.9179985279000809">0.918</td>
+        <td class="num" data-v="0.9179985279000807">0.918</td>
+        <td data-v="0">
+          <span class="sigdot sig-no"></span>no
+        </td>
+        <td data-v="inconclusive"><span class="badge inconclusive">inconclusive</span></td>
+      </tr>
+      <tr class="detail">
+        <td colspan="9"><div class="box">
+          <p class="reason"><b>Why:</b> Adequately powered (n_min=30,000, MDE=9.03%) but no significant effect after correction (p_adj=0.918). Flat result.</p>
+          <div class="kv">
+            <div><b>Test:</b> two-proportion z-test</div>
+            <div><b>Control n:</b> 30,000</div>
+            <div><b>Treatment n:</b> 30,000</div>
+            <div><b>Abs. difference:</b> -0.0002</div>
+            <div><b>Rel. uplift:</b> -0.33%</div>
+            <div><b>95% CI (abs diff):</b> [-0.004007, 0.003607]</div>
+            <div><b>Test statistic:</b> -0.103</div>
+            <div><b>p-value (raw):</b> 0.918</div>
+            <div><b>p-value (BH-adj):</b> 0.918</div>
+            <div><b>MDE (relative, 80% power):</b> 9.03%</div>
+            <div><b>Desired direction:</b> increase</div>
+            <div><b>Interim looks (peeks):</b> 0</div>
+          </div>
+          
+          <div class="flags"><b style="font-size:12px;color:var(--muted)">Flags:</b>
+            <span class="flag">observed_effect_below_mde</span>
+          </div>
+          
+        </div></td>
+      </tr>
+    
+    </tbody>
+  </table>
+
+  <footer>
+    Verdicts are rule-based (config: &alpha;=0.05, practical floor
+    0.5%, min sample/arm 1,000).
+    Significance is judged <b>after</b> Benjamini-Hochberg correction across all
+    30 experiments to control the false discovery rate.
+    Synthetic data &mdash; for demonstration only.
+  </footer>
+
+<script>
+function toggle(row){ var d=row.nextElementSibling; if(d&&d.classList.contains('detail')) d.classList.toggle('open'); }
+
+function applyFilter(){
+  var q=document.getElementById('q').value.toLowerCase();
+  var v=document.getElementById('vf').value;
+  document.querySelectorAll('#tbl tbody tr.main').forEach(function(row){
+    var ok=(!q||row.dataset.search.indexOf(q)>-1)&&(!v||row.dataset.verdict===v);
+    row.style.display=ok?'':'none';
+    var d=row.nextElementSibling;
+    if(d&&d.classList.contains('detail')){ d.style.display=ok?'':'none'; if(!ok) d.classList.remove('open'); }
+  });
+}
+
+var sortState={};
+document.querySelectorAll('#tbl thead th').forEach(function(th,idx){
+  th.addEventListener('click',function(){
+    var tbody=document.querySelector('#tbl tbody');
+    var pairs=[];
+    tbody.querySelectorAll('tr.main').forEach(function(m){ pairs.push([m,m.nextElementSibling]); });
+    var type=th.dataset.t, asc=!(sortState[idx]);
+    sortState={}; sortState[idx]=asc;
+    pairs.sort(function(a,b){
+      var ca=a[0].children[idx], cb=b[0].children[idx];
+      var va=ca.dataset.v!==undefined?ca.dataset.v:ca.textContent.trim();
+      var vb=cb.dataset.v!==undefined?cb.dataset.v:cb.textContent.trim();
+      if(type==='n'){ va=parseFloat(va); vb=parseFloat(vb);
+        if(isNaN(va))va=Infinity; if(isNaN(vb))vb=Infinity; }
+      else { va=(''+va).toLowerCase(); vb=(''+vb).toLowerCase(); }
+      return (va<vb?-1:va>vb?1:0)*(asc?1:-1);
+    });
+    pairs.forEach(function(p){ tbody.appendChild(p[0]); if(p[1]) tbody.appendChild(p[1]); });
+  });
+});
+</script>
+</body>
+</html>

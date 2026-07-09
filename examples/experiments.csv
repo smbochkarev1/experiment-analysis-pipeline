@@ -1,0 +1,31 @@
+experiment_id,name,metric_type,control_n,control_value,control_var,treatment_n,treatment_value,treatment_var,direction,peeks
+EXP-001,Checkout button color,proportion,40000,0.118625,,40000,0.1305,,increase,0
+EXP-002,One-click reorder,proportion,60000,0.044433,,60000,0.052783,,increase,0
+EXP-003,Revenue per user - new plan,mean,30000,51.998286,81.149295,30000,55.111048,80.603897,increase,0
+EXP-004,Simplified signup form,proportion,50000,0.21996,,50000,0.23396,,increase,0
+EXP-005,Search ranking v2,mean,45000,3.098738,1.932235,45000,3.384654,1.969124,increase,0
+EXP-006,Aggressive upsell modal,proportion,50000,0.18064,,50000,0.16342,,increase,0
+EXP-007,Ads density +2 slots,mean,35000,41.079006,64.138921,35000,38.897572,64.017466,increase,0
+EXP-008,Mandatory account gate,proportion,40000,0.301675,,40000,0.28425,,increase,0
+EXP-009,Onboarding tooltip,proportion,600,0.126667,,600,0.143333,,increase,0
+EXP-010,Premium banner copy,mean,450,25.052418,144.128497,450,27.616047,140.058519,increase,0
+EXP-011,Referral nudge (pilot),proportion,800,0.065,,800,0.08625,,increase,0
+EXP-012,Dark mode toggle placement,proportion,500,0.076,,500,0.094,,increase,0
+EXP-013,Footer link reorder,proportion,60000,0.108967,,60000,0.110433,,increase,0
+EXP-014,Font size +1px,mean,40000,30.053918,35.896951,40000,29.985481,36.209968,increase,0
+EXP-015,Icon set refresh,proportion,55000,0.199455,,55000,0.201018,,increase,0
+EXP-016,Loading spinner style,mean,38000,18.039868,24.983115,38000,17.88904,25.187796,increase,0
+EXP-017,Micro copy on CTA,proportion,400000,0.24922,,400000,0.251125,,increase,0
+EXP-018,Rounding of prices .99,mean,300000,11.994901,8.987526,300000,12.037406,9.023421,increase,0
+EXP-019,Email subject A,proportion,22000,0.127318,,22000,0.129091,,increase,0
+EXP-020,Email subject B,proportion,22000,0.129136,,22000,0.132,,increase,0
+EXP-021,Push timing shift,proportion,30000,0.060333,,30000,0.060133,,increase,0
+EXP-022,Guest checkout,proportion,70000,0.159029,,70000,0.165557,,increase,0
+EXP-023,Bundle recommendation,mean,55000,47.965886,100.588845,55000,49.660449,98.884402,increase,0
+EXP-024,Progress bar in cart,proportion,48000,0.138187,,48000,0.145187,,increase,0
+EXP-025,Autoplay video (peeked x5),proportion,20000,0.09285,,20000,0.1079,,increase,5
+EXP-026,Notif frequency (peeked x8),mean,15000,21.964382,49.194997,15000,23.230846,49.358881,increase,8
+EXP-027,Faster page (bounce rate),proportion,45000,0.348911,,45000,0.330978,,decrease,0
+EXP-028,Reduce checkout steps (time),mean,30000,95.063802,404.41711,30000,88.3771,395.448191,decrease,0
+EXP-029,Error-state redesign (errors),proportion,40000,0.039575,,40000,0.040175,,decrease,0
+EXP-030,Homepage hero rework,mean,120000,59.987929,121.256009,120000,61.232408,121.065132,increase,0

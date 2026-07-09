@@ -1,0 +1,195 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>A/B Experiment Batch Report</title>
+<style>
+  :root {
+    --ship:#137333; --ship-bg:#e6f4ea;
+    --noship:#a50e0e; --noship-bg:#fce8e6;
+    --more:#b06000; --more-bg:#fef7e0;
+    --inconc:#5f6368; --inconc-bg:#f1f3f4;
+    --border:#dadce0; --ink:#202124; --muted:#5f6368;
+  }
+  * { box-sizing:border-box; }
+  body { font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Helvetica,Arial,sans-serif;
+         color:var(--ink); margin:0; padding:32px; background:#fff; }
+  h1 { font-size:22px; margin:0 0 4px; }
+  .sub { color:var(--muted); font-size:13px; margin-bottom:20px; }
+  .cards { display:flex; gap:12px; flex-wrap:wrap; margin-bottom:20px; }
+  .card { border:1px solid var(--border); border-radius:8px; padding:12px 16px; min-width:120px; }
+  .card .n { font-size:26px; font-weight:700; }
+  .card .l { font-size:12px; color:var(--muted); text-transform:uppercase; letter-spacing:.4px; }
+  table { border-collapse:collapse; width:100%; font-size:13px; }
+  th, td { text-align:left; padding:8px 10px; border-bottom:1px solid var(--border); white-space:nowrap; }
+  th { background:#f8f9fa; cursor:pointer; user-select:none; position:sticky; top:0; }
+  th:hover { background:#f1f3f4; }
+  th::after { content:" \2195"; color:#bbb; font-size:11px; }
+  tr.main:hover { background:#fafafa; }
+  tr.main { cursor:pointer; }
+  td.num { text-align:right; font-variant-numeric:tabular-nums; }
+  .pos { color:var(--ship); } .neg { color:var(--noship); }
+  .badge { display:inline-block; padding:2px 10px; border-radius:12px; font-size:12px; font-weight:600; }
+  .badge.ship { color:var(--ship); background:var(--ship-bg); }
+  .badge.no_ship { color:var(--noship); background:var(--noship-bg); }
+  .badge.needs_more_data { color:var(--more); background:var(--more-bg); }
+  .badge.inconclusive { color:var(--inconc); background:var(--inconc-bg); }
+  .sigdot { display:inline-block; width:9px; height:9px; border-radius:50%; margin-right:6px; }
+  .sig-yes { background:var(--ship); } .sig-no { background:#c7c7c7; }
+  tr.detail td { background:#fbfcfd; border-bottom:2px solid var(--border); padding:0; }
+  tr.detail .box { padding:14px 18px; display:none; }
+  tr.detail.open .box { display:block; }
+  .kv { display:grid; grid-template-columns:repeat(auto-fill,minmax(220px,1fr)); gap:8px 24px; margin-top:8px; }
+  .kv div { font-size:12.5px; }
+  .kv b { color:var(--muted); font-weight:600; }
+  .reason { margin:4px 0 0; font-size:13px; }
+  .flags { margin-top:8px; }
+  .flag { display:inline-block; font-size:11px; background:#fff4e5; color:#8a4b00;
+          border:1px solid #ffd9a8; border-radius:4px; padding:1px 7px; margin:2px 4px 0 0; }
+  .controls { margin:0 0 12px; font-size:13px; }
+  .controls input, .controls select { padding:5px 8px; border:1px solid var(--border); border-radius:6px; font-size:13px; }
+  footer { margin-top:26px; color:var(--muted); font-size:12px; border-top:1px solid var(--border); padding-top:12px; }
+  code { background:#f1f3f4; padding:1px 5px; border-radius:4px; }
+  @media print {
+    body { padding:0; }
+    th { position:static; }
+    tr.detail .box { display:block !important; }
+    .controls, th::after { display:none; }
+    tr, td, th { page-break-inside:avoid; }
+  }
+</style>
+</head>
+<body>
+  <h1>A/B Experiment Batch Report</h1>
+  <div class="sub">
+    {{ meta.n_experiments }} experiments &middot; source <code>{{ meta.input }}</code>
+    &middot; generated {{ meta.generated_at }}
+    &middot; &alpha;={{ cfg.alpha }}, BH-FDR={{ cfg.fdr_level }}
+  </div>
+
+  <div class="cards">
+    <div class="card"><div class="n" style="color:var(--ship)">{{ meta.counts.get('ship',0) }}</div><div class="l">Ship</div></div>
+    <div class="card"><div class="n" style="color:var(--noship)">{{ meta.counts.get('no_ship',0) }}</div><div class="l">No-ship</div></div>
+    <div class="card"><div class="n" style="color:var(--more)">{{ meta.counts.get('needs_more_data',0) }}</div><div class="l">More data</div></div>
+    <div class="card"><div class="n" style="color:var(--inconc)">{{ meta.counts.get('inconclusive',0) }}</div><div class="l">Inconclusive</div></div>
+  </div>
+
+  <div class="controls">
+    Filter:
+    <input id="q" type="text" placeholder="search id / name..." oninput="applyFilter()">
+    <select id="vf" onchange="applyFilter()">
+      <option value="">all verdicts</option>
+      <option value="ship">ship</option>
+      <option value="no_ship">no_ship</option>
+      <option value="needs_more_data">needs_more_data</option>
+      <option value="inconclusive">inconclusive</option>
+    </select>
+  </div>
+
+  <table id="tbl">
+    <thead>
+      <tr>
+        <th data-t="s">Experiment</th>
+        <th data-t="s">Metric</th>
+        <th data-t="n">Control</th>
+        <th data-t="n">Treatment</th>
+        <th data-t="n">Uplift</th>
+        <th data-t="n">p (raw)</th>
+        <th data-t="n">p (BH)</th>
+        <th data-t="s">Sig.</th>
+        <th data-t="s">Verdict</th>
+      </tr>
+    </thead>
+    <tbody>
+    {% for r in results %}
+      <tr class="main" data-verdict="{{ r.verdict }}" data-search="{{ (r.experiment_id ~ ' ' ~ r.name)|lower }}" onclick="toggle(this)">
+        <td><b>{{ r.experiment_id }}</b><br><span style="color:var(--muted)">{{ r.name }}</span></td>
+        <td>{{ r.metric_type }}</td>
+        <td class="num" data-v="{{ r.control_value }}">
+          {% if r.metric_type == 'proportion' %}{{ r.control_value|pct }}{% else %}{{ r.control_value|sig }}{% endif %}
+        </td>
+        <td class="num" data-v="{{ r.treatment_value }}">
+          {% if r.metric_type == 'proportion' %}{{ r.treatment_value|pct }}{% else %}{{ r.treatment_value|sig }}{% endif %}
+        </td>
+        <td class="num {{ 'pos' if r.rel_uplift>0 else 'neg' }}" data-v="{{ r.rel_uplift }}">{{ r.rel_uplift|pct }}</td>
+        <td class="num" data-v="{{ r.p_value }}">{{ r.p_value|sig }}</td>
+        <td class="num" data-v="{{ r.p_adj }}">{{ r.p_adj|sig }}</td>
+        <td data-v="{{ 1 if r.significant_bh else 0 }}">
+          <span class="sigdot {{ 'sig-yes' if r.significant_bh else 'sig-no' }}"></span>{{ 'yes' if r.significant_bh else 'no' }}
+        </td>
+        <td data-v="{{ r.verdict }}"><span class="badge {{ r.verdict }}">{{ r.verdict.replace('_',' ') }}</span></td>
+      </tr>
+      <tr class="detail">
+        <td colspan="9"><div class="box">
+          <p class="reason"><b>Why:</b> {{ r.reason }}</p>
+          <div class="kv">
+            <div><b>Test:</b> {{ r.test }}</div>
+            <div><b>Control n:</b> {{ "{:,}".format(r.control_n) }}</div>
+            <div><b>Treatment n:</b> {{ "{:,}".format(r.treatment_n) }}</div>
+            <div><b>Abs. difference:</b> {{ r.abs_diff|sig }}</div>
+            <div><b>Rel. uplift:</b> {{ r.rel_uplift|pct }}</div>
+            <div><b>95% CI (abs diff):</b> [{{ r.ci_low|sig }}, {{ r.ci_high|sig }}]</div>
+            <div><b>Test statistic:</b> {{ r.stat|sig }}</div>
+            <div><b>p-value (raw):</b> {{ r.p_value|sig }}</div>
+            <div><b>p-value (BH-adj):</b> {{ r.p_adj|sig }}</div>
+            <div><b>MDE (relative, 80% power):</b> {{ r.mde|pct }}</div>
+            <div><b>Desired direction:</b> {{ 'increase' if r.direction==1 else 'decrease' }}</div>
+            <div><b>Interim looks (peeks):</b> {{ r.peeks }}</div>
+          </div>
+          {% if r.flags %}
+          <div class="flags"><b style="font-size:12px;color:var(--muted)">Flags:</b>
+            {% for f in r.flags %}<span class="flag">{{ f }}</span>{% endfor %}
+          </div>
+          {% endif %}
+        </div></td>
+      </tr>
+    {% endfor %}
+    </tbody>
+  </table>
+
+  <footer>
+    Verdicts are rule-based (config: &alpha;={{ cfg.alpha }}, practical floor
+    {{ (cfg.min_practical_uplift*100) }}%, min sample/arm {{ "{:,}".format(cfg.min_sample_per_arm) }}).
+    Significance is judged <b>after</b> Benjamini-Hochberg correction across all
+    {{ meta.n_experiments }} experiments to control the false discovery rate.
+    Synthetic data &mdash; for demonstration only.
+  </footer>
+
+<script>
+function toggle(row){ var d=row.nextElementSibling; if(d&&d.classList.contains('detail')) d.classList.toggle('open'); }
+
+function applyFilter(){
+  var q=document.getElementById('q').value.toLowerCase();
+  var v=document.getElementById('vf').value;
+  document.querySelectorAll('#tbl tbody tr.main').forEach(function(row){
+    var ok=(!q||row.dataset.search.indexOf(q)>-1)&&(!v||row.dataset.verdict===v);
+    row.style.display=ok?'':'none';
+    var d=row.nextElementSibling;
+    if(d&&d.classList.contains('detail')){ d.style.display=ok?'':'none'; if(!ok) d.classList.remove('open'); }
+  });
+}
+
+var sortState={};
+document.querySelectorAll('#tbl thead th').forEach(function(th,idx){
+  th.addEventListener('click',function(){
+    var tbody=document.querySelector('#tbl tbody');
+    var pairs=[];
+    tbody.querySelectorAll('tr.main').forEach(function(m){ pairs.push([m,m.nextElementSibling]); });
+    var type=th.dataset.t, asc=!(sortState[idx]);
+    sortState={}; sortState[idx]=asc;
+    pairs.sort(function(a,b){
+      var ca=a[0].children[idx], cb=b[0].children[idx];
+      var va=ca.dataset.v!==undefined?ca.dataset.v:ca.textContent.trim();
+      var vb=cb.dataset.v!==undefined?cb.dataset.v:cb.textContent.trim();
+      if(type==='n'){ va=parseFloat(va); vb=parseFloat(vb);
+        if(isNaN(va))va=Infinity; if(isNaN(vb))vb=Infinity; }
+      else { va=(''+va).toLowerCase(); vb=(''+vb).toLowerCase(); }
+      return (va<vb?-1:va>vb?1:0)*(asc?1:-1);
+    });
+    pairs.forEach(function(p){ tbody.appendChild(p[0]); if(p[1]) tbody.appendChild(p[1]); });
+  });
+});
+</script>
+</body>
+</html>

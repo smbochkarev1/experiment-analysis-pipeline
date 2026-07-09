@@ -1,0 +1,21 @@
+# Verdict configuration for the experiment analysis pipeline.
+# All thresholds are tunable here without touching the code.
+
+# Statistical significance
+alpha: 0.05                     # family-wise / per-test significance level
+use_multiple_comparison: true   # apply Benjamini-Hochberg FDR correction across the batch
+fdr_level: 0.05                 # target false discovery rate for BH
+
+# Practical significance (guardrails against statistically-significant-but-tiny effects)
+min_practical_uplift: 0.005     # 0.5% relative uplift floor to call something a real win/loss
+
+# Power / sample adequacy
+min_sample_per_arm: 1000        # below this an experiment is treated as underpowered
+target_power: 0.80              # power used to compute the MDE reference
+underpowered_if_mde_gt_uplift: true  # if observed |uplift| < MDE, effect may be undetectable
+
+# Sequential testing / peeking guard
+# If a stopping/checkpoint count is provided per experiment (peeks column),
+# results from many looks without alpha-spending are flagged as unreliable.
+peeking_guard: true
+max_peeks_without_correction: 1
