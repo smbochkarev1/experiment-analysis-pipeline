@@ -1,5 +1,9 @@
 # experiment-analysis-pipeline
 
+[![tests](https://github.com/smbochkarev1/experiment-analysis-pipeline/actions/workflows/tests.yml/badge.svg)](https://github.com/smbochkarev1/experiment-analysis-pipeline/actions/workflows/tests.yml)
+[![python](https://img.shields.io/badge/python-3.12%2B-blue.svg)](https://www.python.org/)
+[![license: MIT](https://img.shields.io/badge/license-MIT-green.svg)](LICENSE)
+
 **Batch-analyze dozens of A/B experiments in one command and get a single, sortable HTML report with a ship / no-ship verdict for each one.**
 
 Feed it a table of experiment summary statistics → it runs the right significance test per metric, corrects for multiple comparisons across the whole batch, assigns a rule-based verdict, and renders a self-contained interactive report you can open in a browser or print to PDF.
@@ -93,6 +97,15 @@ Options: `--outdir` (default `output`), `--config config.yaml`, `--template temp
 - **All tests are two-sided** and operate on **summary statistics** — no row-level data is needed, which is what makes batch analysis of many experiments cheap.
 
 Validation: the proportion test, Welch test and BH correction are checked against a hand-worked example and against `scipy.stats` independent implementations; all match to numerical precision.
+
+## 7. Tests
+
+The statistical core is covered by a pytest suite (`tests/test_stats.py`) that pins each function to an independently known answer — the two-proportion z-test to a hand-worked textbook example, Welch's t-test to `scipy.stats.ttest_ind(equal_var=False)`, and the BH correction to `scipy.stats.false_discovery_control`. The suite runs in CI on every push (see the badge above).
+
+```bash
+pip install -r requirements-dev.txt
+pytest -q
+```
 
 ---
 
