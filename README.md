@@ -107,6 +107,20 @@ pip install -r requirements-dev.txt
 pytest -q
 ```
 
+## 8. Limitations
+
+- **Summary statistics in, not row-level data.** This is what makes batch analysis
+  cheap, but it means no segmentation, no CUPED/variance reduction, and no
+  re-derivation of a sequential boundary — the peeking guard flags risk, it doesn't
+  correct for it.
+- **Frequentist, fixed-horizon assumptions.** Two-sided tests with normal
+  approximations (z / Welch); valid at realistic sample sizes but not a substitute
+  for a proper sequential-testing engine if you truly peek.
+- **Verdicts are heuristics, not decisions.** The ship/no-ship logic encodes
+  conventional thresholds from `config.yaml`; it informs a call, it doesn't make it.
+- **One metric per experiment row.** Multi-metric experiments with their own
+  guardrail trade-offs need to be modeled as separate rows.
+
 ---
 
 *Synthetic data only — the numbers in `examples/` are simulated for demonstration. The methodology is standard A/B analysis. MIT-licensed.*
