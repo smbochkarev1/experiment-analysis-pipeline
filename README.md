@@ -3,10 +3,17 @@
 [![tests](https://github.com/smbochkarev1/experiment-analysis-pipeline/actions/workflows/tests.yml/badge.svg)](https://github.com/smbochkarev1/experiment-analysis-pipeline/actions/workflows/tests.yml)
 [![python](https://img.shields.io/badge/python-3.12%2B-blue.svg)](https://www.python.org/)
 [![license: MIT](https://img.shields.io/badge/license-MIT-green.svg)](LICENSE)
+[![live demo](https://img.shields.io/badge/live%20demo-open%20report-4f46e5.svg)](https://smbochkarev1.github.io/experiment-analysis-pipeline/)
 
 **Batch-analyze dozens of A/B experiments in one command and get a single, sortable HTML report with a ship / no-ship verdict for each one.**
 
 Feed it a table of experiment summary statistics → it runs the right significance test per metric, corrects for multiple comparisons across the whole batch, assigns a rule-based verdict, and renders a self-contained interactive report you can open in a browser or print to PDF.
+
+### 🌐 [Open the live report →](https://smbochkarev1.github.io/experiment-analysis-pipeline/)
+
+The report below is generated from 30 synthetic experiments. It's fully interactive — **sort any column, filter by verdict, click a row to expand the full stats** — and self-contained (no CDN, prints cleanly to PDF).
+
+[![Interactive A/B batch report — summary cards and sortable verdict table](docs/hero.png)](https://smbochkarev1.github.io/experiment-analysis-pipeline/)
 
 ```bash
 python analyze.py --input examples/experiments.csv
